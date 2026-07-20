@@ -141,10 +141,25 @@ app.post("/api/v1/nfts/:id/bid", (req, res) => {
 
   // record the bid
   if (!nft.bids) nft.bids = [];
-  nft.bids.push({ bidder: bidder, amount: amount, timestamp: Date.now() });
+  var now = Date.now();
+  nft.bids.push({ bidder: bidder, amount: amount, timestamp: now });
+
+  // also add to transactions so it shows up in history/user txs
+  var txId = baseTransactions.length + 1;
+  baseTransactions.push({
+    id: txId,
+    txHash: "0x" + txId.toString(16).padStart(64, "0"),
+    type: "bid",
+    tokenId: nft.tokenId,
+    from: bidder,
+    to: nft.owner,
+    price: amount,
+    blockNum: 12345680 + txId,
+    timestamp: Math.floor(now / 1000),
+  });
 
   // return nft without history (same pattern as GET /nfts/:id)
-  const resp = Object.assign({}, nft);
+  var resp = Object.assign({}, nft);
   delete resp.history;
   return res.json(resp);
 });
