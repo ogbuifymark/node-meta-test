@@ -15,20 +15,55 @@ test("GET /api/v1/nfts returns seed data", async () => {
   assert.equal(response.body.nfts.length, 10);
 });
 
-// --- Core (must implement for 60-min assessment) ---
+// --- Core ---
 test("should return 404 for nonexistent NFT history", async () => {
-  // TODO: Candidate implements
+  const res = await request(app).get("/api/v1/nfts/9999/history");
+  assert.equal(res.status, 404);
+});
+
+test("history comes back sorted newest first", async () => {
+  const res = await request(app).get("/api/v1/nfts/1/history");
+  assert.equal(res.status, 200);
+  const timestamps = res.body.history.map(h => h.timestamp);
+  // first should be the biggest timestamp
+  assert.equal(timestamps[0], Math.max(...timestamps));
 });
 
 test("should return 400 for bid lower than current highest", async () => {
-  // TODO: Candidate implements
+  // nft 1 has price 0.01, so bidding 0.001 should fail
+  const res = await request(app)
+    .post("/api/v1/nfts/1/bid")
+    .send({ bidder: "0xabc", amount: "0.001" });
+  assert.equal(res.status, 400);
 });
 
-test("GET /api/v1/transactions/user/:address returns paginated data", async () => {
-  // TODO: Candidate implements
+test("valid bid gets accepted", async () => {
+  const res = await request(app)
+    .post("/api/v1/nfts/2/bid")
+    .send({ bidder: "0xabc", amount: "5" });
+  assert.equal(res.status, 200);
+  assert.ok(res.body.bids.length >= 1);
+});
+
+test("user transactions returns array", async () => {
+  // OWNER address from seedData
+  const res = await request(app)
+    .get("/api/v1/transactions/user/0xEA454CBA3F72d0bc966C80875053fd8cb26ae80B");
+  assert.equal(res.status, 200);
+  assert.ok(Array.isArray(res.body.transactions));
+  assert.ok(res.body.transactions.length > 0);
+});
+
+test("unknown address returns empty array not 404", async () => {
+  const res = await request(app).get("/api/v1/transactions/user/0xdeadbeef");
+  assert.equal(res.status, 200);
+  assert.equal(res.body.transactions.length, 0);
 });
 
 // --- Optional ---
 test("should handle malformed request body gracefully", async () => {
-  // TODO: Candidate implements (nice-to-have)
+  const res = await request(app)
+    .post("/api/v1/nfts/1/bid")
+    .send({});
+  assert.equal(res.status, 400);
 });

@@ -89,27 +89,85 @@ app.get("/api/v1/nfts/:id", (req, res) => {
   return res.json(publicNft);
 });
 
-// TODO: Candidate implements — return transfer/listing history for this NFT, sorted newest-first, 404 if not found
-app.get("/api/v1/nfts/:id/history", (_req, res) => {
-  return res.status(501).json({
-    error: true,
-    message: "Not implemented — candidate should return NFT history sorted newest-first",
+app.get("/api/v1/nfts/:id/history", (req, res) => {
+  const id = parseId(req.params.id);
+  if (!id) return res.status(400).json({ error: true, message: "Invalid NFT ID" });
+
+  const nft = findNft(id);
+  if (!nft) return res.status(404).json({ error: true, message: "NFT not found" });
+
+  // sort newest first by timestamp
+  var history = nft.history.slice();
+  history.sort(function (a, b) {
+    return b.timestamp - a.timestamp;
   });
+  return res.json({ history: history });
 });
 
-// TODO: Candidate implements — validate bid amount > current highest bid, reject with 400 if too low, record bid and return updated listing
-app.post("/api/v1/nfts/:id/bid", (_req, res) => {
-  return res.status(501).json({
-    error: true,
-    message: "Not implemented — candidate should validate and record bids",
-  });
+// Place a bid on an NFT
+app.post("/api/v1/nfts/:id/bid", (req, res) => {
+  const id = parseId(req.params.id);
+  if (!id) return res.status(400).json({ error: true, message: "Invalid NFT ID" });
+
+  const nft = findNft(id);
+  if (!nft) return res.status(404).json({ error: true, message: "NFT not found" });
+
+  const bidder = req.body && req.body.bidder;
+  const amount = req.body && req.body.amount;
+  if (!bidder || !amount) {
+    return res.status(400).json({ error: true, message: "Missing bidder or amount" });
+  }
+
+  const bidAmount = parseFloat(amount);
+  if (isNaN(bidAmount) || bidAmount <= 0) {
+    return res.status(400).json({ error: true, message: "Invalid bid amount" });
+  }
+
+  // use listing price as floor, or highest existing bid
+  let currentHighest = parseFloat(nft.price);
+  if (nft.bids && nft.bids.length > 0) {
+    for (let i = 0; i < nft.bids.length; i++) {
+      const b = parseFloat(nft.bids[i].amount);
+      if (b > currentHighest) currentHighest = b;
+    }
+  }
+
+  if (bidAmount <= currentHighest) {
+    return res.status(400).json({
+      error: true,
+      message: "Bid too low, must be higher than " + currentHighest,
+    });
+  }
+
+  // record the bid
+  if (!nft.bids) nft.bids = [];
+  nft.bids.push({ bidder: bidder, amount: amount, timestamp: Date.now() });
+
+  // return nft without history (same pattern as GET /nfts/:id)
+  const resp = Object.assign({}, nft);
+  delete resp.history;
+  return res.json(resp);
 });
 
-// TODO: Candidate implements — return all transactions for this wallet address, support pagination with ?page=1&limit=10 query params
-app.get("/api/v1/transactions/user/:address", (_req, res) => {
-  return res.status(501).json({
-    error: true,
-    message: "Not implemented — candidate should return paginated user transactions",
+// User transactions with pagination
+app.get("/api/v1/transactions/user/:address", (req, res) => {
+  const addr = req.params.address.toLowerCase();
+  const page = parseInt(req.query.page) || 1;
+  const limit = parseInt(req.query.limit) || 10;
+
+  const userTxs = baseTransactions.filter(
+    (tx) => tx.from.toLowerCase() === addr || tx.to.toLowerCase() === addr
+  );
+
+  const start = (page - 1) * limit;
+  const paged = userTxs.slice(start, start + limit);
+
+  return res.json({
+    transactions: paged,
+    total: userTxs.length,
+    page: page,
+    limit: limit,
+    totalPages: Math.ceil(userTxs.length / limit) || 1,
   });
 });
 
